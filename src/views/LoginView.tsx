@@ -100,6 +100,34 @@ export default function LoginView() {
     setLoading(true);
     setError(null);
     try {
+      // Try signing in first — if the user already registered, we log them in
+      // and update their profile instead of showing a confusing error.
+      const { data: existing, error: existingErr } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (!existingErr && existing.user) {
+        // Account already exists — update profile and sign in.
+        const user: AuthUser = {
+          name: name.trim(),
+          email: email.trim(),
+          appRole,
+          jobRole,
+          department,
+        };
+        await saveProfile({
+          email: user.email,
+          name: user.name,
+          job_role: user.jobRole,
+          department: user.department,
+          app_role: user.appRole,
+        });
+        login(user);
+        return;
+      }
+
+      // New registration
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
@@ -107,6 +135,8 @@ export default function LoginView() {
       if (signUpError) throw signUpError;
       if (!data.user) throw new Error('Registration failed — no user returned.');
 
+      // If email confirmation is off, the session is created immediately.
+      // If not, the user will need to confirm, but we still save the profile.
       const user: AuthUser = {
         name: name.trim(),
         email: email.trim(),
@@ -167,11 +197,11 @@ export default function LoginView() {
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 backdrop-blur ring-1 ring-white/20">
                 <ShieldCheck className="h-7 w-7 text-white" />
               </div>
-              <h1 className="text-2xl font-bold">SkillSetu</h1>
+              <h1 className="text-2xl font-bold">StatCompetency AI</h1>
             </div>
             <p className="mt-4 text-sm text-brand-100 max-w-sm leading-relaxed">
-              AI Skill Intelligence &amp; Competency Platform for India&apos;s
-              Official Statistical System.
+              AI Skill Intelligence &amp; Competency Platform for Official
+              Statistics.
             </p>
           </div>
 
@@ -234,7 +264,7 @@ export default function LoginView() {
                 <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white/10 backdrop-blur ring-1 ring-white/20">
                   <ShieldCheck className="h-8 w-8 text-white" />
                 </div>
-                <h1 className="mt-3 text-xl font-bold">SkillSetu</h1>
+                <h1 className="mt-3 text-xl font-bold">StatCompetency AI</h1>
                 <p className="mt-1 text-xs text-brand-100">
                   AI Skill Intelligence &amp; Competency Platform
                 </p>

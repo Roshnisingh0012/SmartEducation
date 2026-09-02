@@ -1,7 +1,13 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { ExternalLink, Clock, Layers, Filter, GraduationCap, Sparkles, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import {
+  ExternalLink, Clock, Layers, Filter, GraduationCap, Sparkles,
+  ArrowRight, CheckCircle2, Loader2, BookOpen, BookMarked,
+} from 'lucide-react';
 import { COURSES } from '@/lib/courses';
-import { DOMAINS, DOMAIN_KEYS, ALL_ROLES, ROLE_META, STATISTICAL_ROLES, TECH_ROLES } from '@/lib/domains';
+import {
+  DOMAINS, DOMAIN_KEYS, ALL_ROLES, ROLE_META,
+  STATISTICAL_ROLES, TECH_ROLES,
+} from '@/lib/domains';
 import type { CourseCard, DomainKey, JobRole } from '@/lib/types';
 import type { LearnerAssessment } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
@@ -25,23 +31,12 @@ const DOMAIN_LABEL: Record<DomainKey, string> = {
   behavioural: 'Behavioural',
 };
 
-const LOCAL_STORAGE_KEY = 'skillsetu_enrollments';
-
-function loadLocalEnrollments(): Set<string> {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function saveLocalEnrollments(ids: Set<string>) {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {
-    // ignore
-  }
+interface EnrollmentRow {
+  id: string;
+  course_id: string;
+  course_title: string;
+  status: string;
+  created_at: string;
 }
 
 export default function PathwayView() {
@@ -49,30 +44,27 @@ export default function PathwayView() {
   const [role, setRole] = useState<JobRole | 'All'>(user?.jobRole ?? 'All');
   const [domain, setDomain] = useState<DomainKey | 'All'>('All');
   const [assessment, setAssessment] = useState<LearnerAssessment | null>(null);
-  const [enrolledIds, setEnrolledIds] = useState<Set<string>>(loadLocalEnrollments);
+  const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
+  const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
   const [pendingId, setPendingId] = useState<string | null>(null);
-
-  const learnerEmail = user?.email ?? 'anonymous@skillsetu.gov.in';
-  const learnerName = user?.name ?? 'Anonymous Learner';
-  const learnerRole = user?.jobRole ?? 'SSO';
 
   // Load existing enrollments from Supabase on mount
   useEffect(() => {
     (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
       const { data } = await supabase
         .from('course_enrollments')
-        .select('course_id')
-        .eq('learner_email', learnerEmail);
-      if (data && data.length > 0) {
-        const supaIds = new Set(data.map((r: { course_id: string }) => r.course_id));
-        // Merge with any locally-stored enrollments (fallback case)
-        const merged = new Set([...enrolledIds, ...supaIds]);
-        setEnrolledIds(merged);
-        saveLocalEnrollments(merged);
+        .select('id, course_id, course_title, status, created_at')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+      if (data) {
+        const rows = data as EnrollmentRow[];
+        setEnrollments(rows);
+        setEnrolledIds(new Set(rows.map((r) => r.course_id)));
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [learnerEmail]);
+  }, []);
 
   // Load latest assessment for personalised ordering
   useEffect(() => {
@@ -91,33 +83,43 @@ export default function PathwayView() {
     async (course: CourseCard) => {
       if (enrolledIds.has(course.id)) return;
       setPendingId(course.id);
-      // Optimistic local update for immediate UI feedback
-      const optimistic = new Set(enrolledIds);
-      optimistic.add(course.id);
-      setEnrolledIds(optimistic);
-      saveLocalEnrollments(optimistic);
-
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) throw new Error('Not signed in');
+
         const { error } = await supabase.from('course_enrollments').upsert(
           {
-            learner_email: learnerEmail,
-            learner_name: learnerName,
+            user_id: session.user.id,
+            learner_email: user?.email ?? '',
+            learner_name: user?.name ?? '',
             course_id: course.id,
             course_title: course.title,
-            job_role: learnerRole,
+            job_role: user?.jobRole ?? '',
             status: 'enrolled',
           },
           { onConflict: 'learner_email,course_id' },
         );
         if (error) throw error;
+
+        // Only after DB save succeeds, update UI and open the external link
+        const newRow: EnrollmentRow = {
+          id: crypto.randomUUID(),
+          course_id: course.id,
+          course_title: course.title,
+          status: 'enrolled',
+          created_at: new Date().toISOString(),
+        };
+        setEnrollments((prev) => [newRow, ...prev]);
+        setEnrolledIds((prev) => new Set([...prev, course.id]));
+
+        window.open(course.url, '_blank', 'noopener,noreferrer');
       } catch {
-        // Supabase failed — local state already updated, so UI is correct.
-        // The enrollment persists in localStorage as fallback.
+        // DB save failed — don't open the link
       } finally {
         setPendingId(null);
       }
     },
-    [enrolledIds, learnerEmail, learnerName, learnerRole],
+    [enrolledIds, user],
   );
 
   const recommended = useMemo<CourseCard[]>(() => {
@@ -136,6 +138,16 @@ export default function PathwayView() {
     return pool;
   }, [role, domain, assessment]);
 
+  // Enrolled course details (matched from COURSES)
+  const enrolledCourses = useMemo(() => {
+    return enrollments
+      .map((e) => {
+        const course = COURSES.find((c) => c.id === e.course_id);
+        return course ? { ...course, enrolledAt: e.created_at, status: e.status } : null;
+      })
+      .filter((c): c is CourseCard & { enrolledAt: string; status: string } => c !== null);
+  }, [enrollments]);
+
   return (
     <div className="space-y-6">
       {assessment && (
@@ -153,6 +165,56 @@ export default function PathwayView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Enrolled Courses section */}
+      {enrolledCourses.length > 0 && (
+        <section className="gov-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <BookMarked className="h-5 w-5 text-brand-600" />
+            <h3 className="text-sm font-bold text-ink-900">Enrolled Courses</h3>
+            <span className="gov-chip bg-emerald-50 text-emerald-700 border border-emerald-200">
+              {enrolledCourses.length} enrolled
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {enrolledCourses.map((course) => (
+              <div
+                key={course.id}
+                className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 flex flex-col"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`gov-chip border ${ROLE_BADGE[course.provider]}`}>
+                    {course.provider}
+                  </span>
+                  <span className="gov-chip bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="h-3 w-3" /> Enrolled
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-ink-900 leading-snug">{course.title}</h4>
+                <p className="mt-1 text-[11px] text-ink-500">
+                  Enrolled {new Date(course.enrolledAt).toLocaleDateString()}
+                </p>
+                <div className="mt-3 flex items-center gap-3 text-[11px] text-ink-500">
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" /> {course.durationHours}h
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Layers className="h-3.5 w-3.5" /> {DOMAIN_LABEL[course.domain]}
+                  </span>
+                </div>
+                <a
+                  href={course.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
+                >
+                  Continue course <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Filters */}
@@ -191,9 +253,6 @@ export default function PathwayView() {
             </select>
             <span className="gov-chip bg-ink-100 text-ink-600">
               {recommended.length} courses
-            </span>
-            <span className="gov-chip bg-emerald-50 text-emerald-700 border border-emerald-200">
-              {enrolledIds.size} enrolled
             </span>
           </div>
         </div>
@@ -249,7 +308,7 @@ export default function PathwayView() {
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
                 >
-                  Open course <ExternalLink className="h-3.5 w-3.5" />
+                  Preview <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </div>
               {/* Enroll button */}
@@ -266,8 +325,10 @@ export default function PathwayView() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : isEnrolled ? (
                   <CheckCircle2 className="h-4 w-4" />
-                ) : null}
-                {isPending ? 'Enrolling…' : isEnrolled ? 'Enrolled' : 'Enroll'}
+                ) : (
+                  <BookOpen className="h-4 w-4" />
+                )}
+                {isPending ? 'Enrolling…' : isEnrolled ? 'Enrolled' : 'Enroll Now'}
               </button>
             </article>
           );

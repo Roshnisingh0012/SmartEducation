@@ -1,3 +1,3 @@
-# SmartEducation
+# StatCompetency AI
 
-SkillSetu — AI Skill Intelligence & Competency Platform for India's Official Statistical System.
+StatCompetency AI — AI Skill Intelligence & Competency Platform for Official Statistics.

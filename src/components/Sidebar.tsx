@@ -43,7 +43,7 @@ export default function Sidebar({ active, onChange }: Props) {
           <ShieldCheck className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-sm font-bold leading-tight text-ink-900">SkillSetu</h1>
+          <h1 className="text-sm font-bold leading-tight text-ink-900">StatCompetency AI</h1>
           <p className="text-[11px] leading-tight text-ink-500">Statistical Competency Platform</p>
         </div>
       </div>
@@ -97,8 +97,7 @@ export default function Sidebar({ active, onChange }: Props) {
 
       <div className="px-5 py-4 border-t border-ink-200">
         <p className="text-[11px] leading-snug text-ink-400">
-          Integrated with iGOT Karmayogi &amp; NSSTA for India&apos;s Official
-          Statistical System.
+          Integrated with iGOT Karmayogi &amp; NSSTA for Official Statistics.
         </p>
       </div>
     </aside>

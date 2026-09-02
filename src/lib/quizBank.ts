@@ -622,6 +622,97 @@ export const QUIZ_TOPICS: QuizTopic[] = [
   },
 ];
 
+// ===================== PDF / TEXT-BASED QUIZ GENERATION =====================
+
+/**
+ * Generate a quiz from raw document text. Extracts key sentences, then
+ * creates fill-in-the-blank style multiple-choice questions by removing a
+ * key term from each sentence and offering it alongside distractors drawn
+ * from other terms in the document.
+ */
+export function generateQuizFromText(
+  text: string,
+  sourceName: string,
+  count = 5,
+): QuizTopic {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 40 && s.length < 300 && /\b(is|are|was|were|means|refers|defined|involves|includes|consists|requires|uses|provides|ensures|describes)\b/i.test(s));
+
+  // Collect candidate "key terms" — capitalized phrases or technical terms
+  const termRegex = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b/g;
+  const allTerms = new Set<string>();
+  for (const s of sentences) {
+    const matches = s.match(termRegex);
+    if (matches) matches.forEach((m) => { if (m.length > 3) allTerms.add(m); });
+  }
+  const termPool = [...allTerms];
+
+  const questions: QuizQuestion[] = [];
+  const usedSentences = new Set<string>();
+
+  for (const sentence of sentences) {
+    if (questions.length >= count) break;
+    if (usedSentences.has(sentence)) continue;
+
+    // Find a key term in this sentence to blank out
+    const termsInSentence = sentence.match(termRegex);
+    if (!termsInSentence || termsInSentence.length === 0) continue;
+
+    const answer = termsInSentence[0];
+    if (answer.length < 4) continue;
+
+    // Build the question by replacing the first occurrence of the answer
+    const blanked = sentence.replace(answer, '_____');
+
+    // Build distractors from other terms
+    const distractors = termPool
+      .filter((t) => t !== answer && !termsInSentence.includes(t))
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3);
+
+    if (distractors.length < 3) continue;
+
+    const options = [answer, ...distractors].sort(() => Math.random() - 0.5);
+    const correctIndex = options.indexOf(answer);
+
+    usedSentences.add(sentence);
+    questions.push({
+      id: `pdf-q${questions.length + 1}`,
+      question: `Fill in the blank: "${blanked}"`,
+      options,
+      correctIndex,
+      explanation: `The correct answer is "${answer}". Based on the uploaded document: "${sentence}"`,
+    });
+  }
+
+  // If we couldn't extract enough questions, pad with role-based practice
+  if (questions.length === 0) {
+    return {
+      id: `pdf-${Date.now()}`,
+      title: `Quiz from ${sourceName}`,
+      domain: 'Document-Based',
+      source: sourceName,
+      questions: [{
+        id: 'pdf-fallback',
+        question: 'The uploaded document did not contain enough extractable text to generate quiz questions. Try uploading a text-based PDF or try the practice quiz instead.',
+        options: ['Try the practice quiz', 'Upload a different file', 'Use role-based quizzes', 'All of the above'],
+        correctIndex: 0,
+        explanation: 'Text-heavy PDFs work best for auto-generating quiz questions. Scanned image PDFs cannot be parsed without OCR.',
+      }],
+    };
+  }
+
+  return {
+    id: `pdf-${Date.now()}`,
+    title: `Quiz from ${sourceName}`,
+    domain: 'Document-Based',
+    source: sourceName,
+    questions,
+  };
+}
+
 // ===================== ROLE-DRIVEN HELPERS =====================
 
 /** Return quizzes tailored to a given job role. */

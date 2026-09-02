@@ -17,7 +17,7 @@ function Shell() {
       <div className="flex min-h-screen items-center justify-center bg-ink-50">
         <div className="flex items-center gap-3 text-ink-400">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
-          <span className="text-sm font-medium">Loading SkillSetu…</span>
+          <span className="text-sm font-medium">Loading StatCompetency AI…</span>
         </div>
       </div>
     );
@@ -42,8 +42,8 @@ function Shell() {
           </div>
         </main>
         <footer className="px-5 py-4 border-t border-ink-200 text-center text-[11px] text-ink-400 lg:px-8">
-          SkillSetu — AI Skill Intelligence &amp; Competency Platform · Integrated
-          with iGOT Karmayogi &amp; NSSTA · For India&apos;s Official Statistical System
+          StatCompetency AI — AI Skill Intelligence &amp; Competency Platform · Integrated
+          with iGOT Karmayogi &amp; NSSTA · For Official Statistics
         </footer>
       </div>
     </div>

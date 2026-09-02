@@ -23,7 +23,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const SESSION_KEY = 'skillsetu_auth';
+const SESSION_KEY = 'statcompetency_auth';
 
 function defaultJobRoleFor(appRole: AppRole): JobRole {
   return appRole === 'admin' ? 'ISS Officer' : 'SSO';

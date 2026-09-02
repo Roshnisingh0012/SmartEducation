@@ -41,7 +41,7 @@ export default function TopBar({ active, onChange }: Props) {
             <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-600 text-white">
               <ShieldCheck className="h-5 w-5" />
             </div>
-            <span className="text-sm font-bold text-ink-900">SkillSetu</span>
+            <span className="text-sm font-bold text-ink-900">StatCompetency AI</span>
           </div>
           <div className="hidden lg:block">
             <h2 className="text-lg font-bold text-ink-900">{meta.title}</h2>
